@@ -1,0 +1,48 @@
+{
+  "search_config": {
+    "filter_journals": true,
+    "query_index": 0,
+    "top_journals": [
+      "\"J Am Med Inform Assoc\"[Journal]",
+      "\"Nat Med\"[Journal]",
+      "\"Lancet Digit Health\"[Journal]",
+      "\"NPJ Digit Med\"[Journal]",
+      "\"JMIR Ment Health\"[Journal]",
+      "\"Artif Intell Med\"[Journal]",
+      "\"J Med Internet Res\"[Journal]",
+      "\"Comput Human Behav\"[Journal]",
+      "\"Cyberpsychol Behav Soc Netv\"[Journal]",
+      "\"Front Digit Health\"[Journal]",
+      "\"IEEE J Biomed Health Inform\"[Journal]",
+      "\"Psychol Med\"[Journal]",
+      "\"Nat Biotechnol\"[Journal]",
+      "\"Sci Transl Med\"[Journal]",
+      "\"J Affect Disord\"[Journal]",
+      "\"Clin Psychol Sci\"[Journal]",
+      "\"Int J Med Inform\"[Journal]",
+      "\"Behav Res Ther\"[Journal]",
+      "\"J Psychiatr Res\"[Journal]",
+      "\"Trends Cogn Sci\"[Journal]"
+    ],
+    "queries": [
+      "psychology AND (machine learning OR deep learning)",
+      "machine learning AND suicide",
+      "(depression OR anxiety) AND (therapy OR treatment)",
+      "artificial intelligence AND mental health",
+      "deep learning AND neuroimaging"
+    ],
+    "target_region": "USA",
+    "max_results": 500
+  },
+  "export_config": {
+    "filename": "usa_papers.csv",
+    "auto_export": true
+  },
+  "analysis_config": {
+    "default_queries": [
+      "What are the main topics covered in these papers?",
+      "What methodologies are commonly used?",
+      "What are the key findings or conclusions?"
+    ]
+  }
+}
