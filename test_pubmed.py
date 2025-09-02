@@ -227,12 +227,21 @@ def filter_papers_by_regions_with_llm(documents, target_regions, batch_size=5):
     print(f"🌍 Filtered to {len(filtered_papers)} papers from target regions ({len(documents)} total)")
     return filtered_papers
 
-def export_papers_to_csv(documents, filename="usa_papers.csv"):
-    """Export papers to CSV file with university, department, and abstract columns"""
+def export_papers_to_csv(documents, filename="usa_papers.csv", analysis_config=None):
+    """Export papers to CSV file with university, department, abstract, and AI analysis columns"""
     print(f"📄 Exporting {len(documents)} papers to {filename}...")
     
+    # Get analysis queries
+    analysis_queries = []
+    if analysis_config and "default_queries" in analysis_config:
+        analysis_queries = analysis_config["default_queries"]
+    
+    # Create fieldnames dynamically based on analysis queries
+    fieldnames = ['name', 'PMID', 'corresponding_author', 'university', 'department', 'abstract']
+    for i, query in enumerate(analysis_queries):
+        fieldnames.append(f'analysis_{i+1}')
+    
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['name', 'PMID', 'corresponding_author', 'university', 'department', 'abstract']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         # Write header
@@ -255,22 +264,75 @@ def export_papers_to_csv(documents, filename="usa_papers.csv"):
                     university = doc.metadata['corresponding_author'].get('university', 'N/A')
                     department = doc.metadata['corresponding_author'].get('department', 'N/A')
             
-            writer.writerow({
+            # Get AI analysis results
+            analysis_results = []
+            if analysis_queries:
+                print(f"🤖 Analyzing paper: {title[:50]}...")
+                analysis_results = analyze_paper_with_llm(abstract, analysis_queries)
+            
+            # Create row data
+            row_data = {
                 'name': title,
                 'PMID': pmid,
                 'corresponding_author': corresponding_author,
                 'university': university,
                 'department': department,
                 'abstract': abstract
-            })
+            }
+            
+            # Add analysis results
+            for i, result in enumerate(analysis_results):
+                row_data[f'analysis_{i+1}'] = result
+            
+            writer.writerow(row_data)
     
     print(f"✅ Successfully exported to {filename}")
     return filename
 
-def print_detailed_papers(documents, count=5):
-    """Print detailed information for first N papers"""
+def analyze_paper_with_llm(abstract, queries):
+    """Analyze a single paper abstract using LLM with default queries"""
+    if not os.getenv("OPENAI_API_KEY") or not abstract or abstract == 'N/A':
+        return ["N/A"] * len(queries)
+    
+    from llama_index.llms.openai import OpenAI
+    llm = OpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"))
+    
+    results = []
+    
+    for query in queries:
+        prompt = f"""
+        Read this research paper abstract and answer the question with ONLY ONE WORD.
+        
+        Abstract: "{abstract}"
+        
+        Question: {query}
+        
+        Instructions:
+        - Respond with exactly ONE word only
+        - Choose the most relevant single word that answers the question
+        - If unclear, respond with "Unknown"
+        
+        One word answer:"""
+        
+        try:
+            response = llm.complete(prompt)
+            result = response.text.strip().split()[0]  # Take only first word
+            results.append(result)
+        except Exception as e:
+            print(f"⚠️  Error analyzing paper: {e}")
+            results.append("Error")
+    
+    return results
+
+def print_detailed_papers(documents, count=5, analysis_config=None):
+    """Print detailed information for first N papers with AI analysis"""
     print(f"\n📋 Detailed Information for First {min(count, len(documents))} Papers:")
     print("=" * 80)
+    
+    # Get analysis queries if provided
+    analysis_queries = []
+    if analysis_config and "default_queries" in analysis_config:
+        analysis_queries = analysis_config["default_queries"]
     
     for i, doc in enumerate(documents[:count]):
         print(f"\n📄 Paper {i+1}:")
@@ -283,6 +345,13 @@ def print_detailed_papers(documents, count=5):
         first_author = doc.metadata.get('first_author', 'N/A') if doc.metadata else 'N/A'
         
         print(f"📝 Title: {title}")
+        
+        # AI Analysis results as second row
+        if analysis_queries and abstract != 'N/A':
+            print("🤖 AI Analysis:", end=" ")
+            analysis_results = analyze_paper_with_llm(abstract, analysis_queries)
+            print(" | ".join(analysis_results))
+        
         print(f"🆔 PMID: {pmid}")
         print(f"👤 First Author: {first_author}")
         
@@ -479,11 +548,11 @@ def main():
                 return
         
         # Print detailed information for first 5 papers
-        print_detailed_papers(documents, count=5)
+        print_detailed_papers(documents, count=5, analysis_config=analysis_config)
         
         # Export papers if configured
         if export_config["auto_export"]:
-            export_papers_to_csv(documents, export_config["filename"])
+            export_papers_to_csv(documents, export_config["filename"], analysis_config)
         
         if not args.analyze:
             print("\n📋 Search complete! Use --analyze flag for AI analysis.")
@@ -501,6 +570,7 @@ def main():
         print("-" * 35)
         
         for i, question in enumerate(analysis_queries, 1):
+            print('hi')
             print(f"\n{i}. {question}")
             response = query_engine.query(question)
             print(f"   Answer: {response}")

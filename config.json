@@ -25,14 +25,14 @@
     ],
     "queries": [
       "psychology AND (machine learning OR deep learning)",
-      "(medical imaging OR MRI OR CT OR PET OR fMRI) AND (mental health OR depression OR anxiety) AND (machine learning OR deep learning)",
+      "(medical imaging OR MRI OR CT OR PET OR fMRI) AND (mental health OR depression OR anxiety OR psychosis OR schizophrenia) AND (machine learning OR deep learning OR llm OR AI)",
       "(depression OR anxiety) AND (therapy OR treatment)",
       "artificial intelligence AND mental health",
       "deep learning AND neuroimaging"
     ],
     "query_index": 1,
     "target_regions": ["USA", "UK"],
-    "max_results": 100
+    "max_results": 300
   },
   "export_config": {
     "filename": "usa_papers.csv",
@@ -41,9 +41,9 @@
   "analysis_config": {
     "batch_query": 100,
     "default_queries": [
-      "What are the main topics covered in these papers?",
-      "What methodologies are commonly used?",
-      "What are the key findings or conclusions?"
+      "answer in less than three words: what's the mental health topic?",
+      "answer in less than three words: what's the machine learning model?",
+      "answer in less than three words: what's the image modality?"
     ]
   }
 }
