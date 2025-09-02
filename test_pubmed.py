@@ -60,6 +60,7 @@ def get_default_config():
             "auto_export": False
         },
         "analysis_config": {
+            "batch_query": 5,
             "default_queries": [
                 "What are the main topics covered in these papers?",
                 "What methodologies are commonly used?"
@@ -137,8 +138,8 @@ def extract_university_and_department(affiliation_text):
     
     return university, department
 
-def filter_papers_by_region_with_llm(documents, target_region):
-    """Use LLM to filter papers by target region"""
+def filter_papers_by_region_with_llm(documents, target_region, batch_size=5):
+    """Use LLM to filter papers by target region in batches"""
     if target_region.lower() == "none":
         return documents
         
@@ -149,7 +150,7 @@ def filter_papers_by_region_with_llm(documents, target_region):
     region_emoji = {"USA": "🇺🇸", "Europe": "🇪🇺", "Asia": "🌏", "Canada": "🇨🇦"}
     emoji = region_emoji.get(target_region, "🌍")
     
-    print(f"{emoji} Using LLM to filter for {target_region}-affiliated papers...")
+    print(f"{emoji} Using LLM to filter for {target_region}-affiliated papers (batch size: {batch_size})...")
     
     # Initialize LLM for filtering
     from llama_index.llms.openai import OpenAI
@@ -157,44 +158,73 @@ def filter_papers_by_region_with_llm(documents, target_region):
     
     filtered_papers = []
     
-    for i, doc in enumerate(documents):
-        # Extract institution from metadata
+    # Extract institutions for batch processing
+    institutions_to_check = []
+    doc_institution_map = {}
+    
+    for doc in documents:
         institution = ""
         if doc.metadata and 'corresponding_author' in doc.metadata:
             if doc.metadata['corresponding_author'] and 'university' in doc.metadata['corresponding_author']:
                 institution = doc.metadata['corresponding_author']['university']
         
-        if not institution:
-            continue
-            
-        # Create prompt for LLM to determine if institution is in target region
-        prompt = f"""
-        Analyze this institution name and determine if it is located in {target_region}.
+        if institution:
+            institutions_to_check.append(institution)
+            doc_institution_map[institution] = doc
+    
+    # Process institutions in batches
+    for i in range(0, len(institutions_to_check), batch_size):
+        batch = institutions_to_check[i:i+batch_size]
         
-        Institution: "{institution}"
+        # Create batch prompt
+        institution_list = "\n".join([f"{j+1}. {inst}" for j, inst in enumerate(batch)])
+        
+        prompt = f"""
+        Analyze these institution names and determine which ones are located in {target_region}.
+        
+        Institutions:
+        {institution_list}
         
         Consider:
         - University names, medical centers, hospitals in {target_region}
         - Geographic indicators for {target_region}
         - Common institutional patterns for {target_region}
         
-        Respond with only "YES" if the institution is clearly in {target_region}, or "NO" if it's not in {target_region} or unclear.
+        Respond with only the numbers (1, 2, 3, etc.) of institutions that are clearly in {target_region}, separated by commas.
+        If none are in {target_region}, respond with "NONE".
+        Example response: "1, 3, 5" or "NONE"
         """
         
         try:
             response = llm.complete(prompt)
-            result = response.text.strip().upper()
+            result = response.text.strip()
             
-            if result == "YES":
-                filtered_papers.append(doc)
-                print(f"✅ Keeping: {institution}")
+            if result.upper() == "NONE":
+                keep_indices = []
             else:
-                print(f"❌ Filtering out: {institution}")
-                
+                # Parse the response to get indices
+                keep_indices = []
+                for num_str in result.split(','):
+                    try:
+                        idx = int(num_str.strip()) - 1  # Convert to 0-based index
+                        if 0 <= idx < len(batch):
+                            keep_indices.append(idx)
+                    except ValueError:
+                        continue
+            
+            # Process results
+            for j, institution in enumerate(batch):
+                if j in keep_indices:
+                    filtered_papers.append(doc_institution_map[institution])
+                    print(f"✅ Keeping: {institution}")
+                else:
+                    print(f"❌ Filtering out: {institution}")
+                    
         except Exception as e:
-            print(f"⚠️  Error processing {institution}: {e}")
-            # Keep paper if LLM fails
-            filtered_papers.append(doc)
+            print(f"⚠️  Error processing batch {i//batch_size + 1}: {e}")
+            # Keep all papers in batch if LLM fails
+            for institution in batch:
+                filtered_papers.append(doc_institution_map[institution])
     
     print(f"{emoji} Filtered to {len(filtered_papers)} {target_region}-affiliated papers from {len(documents)} total")
     return filtered_papers
@@ -410,7 +440,8 @@ def main():
         # Apply region filtering if configured
         target_region = search_config["target_region"]
         if target_region.lower() != "none":
-            documents = filter_papers_by_region_with_llm(documents, target_region)
+            batch_size = analysis_config.get("batch_query", 5)
+            documents = filter_papers_by_region_with_llm(documents, target_region, batch_size)
             if not documents:
                 print(f"No {target_region}-affiliated papers found after filtering.")
                 return
