@@ -52,7 +52,7 @@ def get_default_config():
                 '"Lancet Digit Health"[Journal]'
             ],
             "queries": ["machine learning AND mental health"],
-            "target_region": "none",
+            "target_regions": ["none"],
             "max_results": 100
         },
         "export_config": {
@@ -138,19 +138,17 @@ def extract_university_and_department(affiliation_text):
     
     return university, department
 
-def filter_papers_by_region_with_llm(documents, target_region, batch_size=5):
-    """Use LLM to filter papers by target region in batches"""
-    if target_region.lower() == "none":
+def filter_papers_by_regions_with_llm(documents, target_regions, batch_size=5):
+    """Use LLM to filter papers by target regions in batches"""
+    if not target_regions or (len(target_regions) == 1 and target_regions[0].lower() == "none"):
         return documents
         
     if not os.getenv("OPENAI_API_KEY"):
         print("⚠️  No OpenAI API key found. Skipping region filtering.")
         return documents
     
-    region_emoji = {"USA": "🇺🇸", "Europe": "🇪🇺", "Asia": "🌏", "Canada": "🇨🇦"}
-    emoji = region_emoji.get(target_region, "🌍")
-    
-    print(f"{emoji} Using LLM to filter for {target_region}-affiliated papers (batch size: {batch_size})...")
+    regions_str = ", ".join(target_regions)
+    print(f"🌍 Using LLM to filter for {regions_str}-affiliated papers (batch size: {batch_size})...")
     
     # Initialize LLM for filtering
     from llama_index.llms.openai import OpenAI
@@ -180,18 +178,18 @@ def filter_papers_by_region_with_llm(documents, target_region, batch_size=5):
         institution_list = "\n".join([f"{j+1}. {inst}" for j, inst in enumerate(batch)])
         
         prompt = f"""
-        Analyze these institution names and determine which ones are located in {target_region}.
+        Analyze these institution names and determine which ones are located in any of these regions: {regions_str}.
         
         Institutions:
         {institution_list}
         
         Consider:
-        - University names, medical centers, hospitals in {target_region}
-        - Geographic indicators for {target_region}
-        - Common institutional patterns for {target_region}
+        - University names, medical centers, hospitals in {regions_str}
+        - Geographic indicators for these regions
+        - Common institutional patterns for these regions
         
-        Respond with only the numbers (1, 2, 3, etc.) of institutions that are clearly in {target_region}, separated by commas.
-        If none are in {target_region}, respond with "NONE".
+        Respond with only the numbers (1, 2, 3, etc.) of institutions that are clearly in ANY of these regions: {regions_str}, separated by commas.
+        If none are in these regions, respond with "NONE".
         Example response: "1, 3, 5" or "NONE"
         """
         
@@ -226,7 +224,7 @@ def filter_papers_by_region_with_llm(documents, target_region, batch_size=5):
             for institution in batch:
                 filtered_papers.append(doc_institution_map[institution])
     
-    print(f"{emoji} Filtered to {len(filtered_papers)} {target_region}-affiliated papers from {len(documents)} total")
+    print(f"🌍 Filtered to {len(filtered_papers)} papers from target regions ({len(documents)} total)")
     return filtered_papers
 
 def export_papers_to_csv(documents, filename="usa_papers.csv"):
@@ -472,12 +470,12 @@ def main():
             return
         
         # Apply region filtering if configured
-        target_region = search_config["target_region"]
-        if target_region.lower() != "none":
+        target_regions = search_config.get("target_regions", [])
+        if target_regions and not (len(target_regions) == 1 and target_regions[0].lower() == "none"):
             batch_size = analysis_config.get("batch_query", 5)
-            documents = filter_papers_by_region_with_llm(documents, target_region, batch_size)
+            documents = filter_papers_by_regions_with_llm(documents, target_regions, batch_size)
             if not documents:
-                print(f"No {target_region}-affiliated papers found after filtering.")
+                print(f"No papers found from target regions: {', '.join(target_regions)}")
                 return
         
         # Print detailed information for first 5 papers

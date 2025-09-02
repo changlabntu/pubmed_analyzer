@@ -1,7 +1,6 @@
 {
   "search_config": {
-    "filter_journals": true,
-    "query_index": 0,
+    "filter_journals": false,
     "top_journals": [
       "\"J Am Med Inform Assoc\"[Journal]",
       "\"Nat Med\"[Journal]",
@@ -26,13 +25,14 @@
     ],
     "queries": [
       "psychology AND (machine learning OR deep learning)",
-      "machine learning AND suicide",
+      "(medical imaging OR MRI OR CT OR PET OR fMRI) AND (mental health OR depression OR anxiety) AND (machine learning OR deep learning)",
       "(depression OR anxiety) AND (therapy OR treatment)",
       "artificial intelligence AND mental health",
       "deep learning AND neuroimaging"
     ],
-    "target_region": "USA",
-    "max_results": 500
+    "query_index": 1,
+    "target_regions": ["USA", "UK"],
+    "max_results": 100
   },
   "export_config": {
     "filename": "usa_papers.csv",
