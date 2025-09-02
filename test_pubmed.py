@@ -247,7 +247,10 @@ def export_papers_to_csv(documents, filename="usa_papers.csv", analysis_config=N
         # Write header
         writer.writeheader()
         
-        # Write paper data
+        # Prepare data for batch analysis
+        papers_data = []
+        papers_metadata = []
+        
         for doc in documents:
             # Extract data from document metadata
             title = doc.metadata.get('title', 'N/A') if doc.metadata else 'N/A'
@@ -264,30 +267,117 @@ def export_papers_to_csv(documents, filename="usa_papers.csv", analysis_config=N
                     university = doc.metadata['corresponding_author'].get('university', 'N/A')
                     department = doc.metadata['corresponding_author'].get('department', 'N/A')
             
-            # Get AI analysis results
-            analysis_results = []
-            if analysis_queries:
-                print(f"🤖 Analyzing paper: {title[:50]}...")
-                analysis_results = analyze_paper_with_llm(abstract, analysis_queries)
-            
-            # Create row data
-            row_data = {
-                'name': title,
-                'PMID': pmid,
+            papers_data.append((title, abstract))
+            papers_metadata.append({
+                'title': title,
+                'pmid': pmid,
                 'corresponding_author': corresponding_author,
                 'university': university,
                 'department': department,
                 'abstract': abstract
+            })
+        
+        # Get AI analysis results in batches
+        all_analysis_results = []
+        if analysis_queries:
+            print(f"🤖 Analyzing {len(papers_data)} papers in batches of 10...")
+            all_analysis_results = analyze_papers_batch_with_llm(papers_data, analysis_queries, batch_size=10)
+        else:
+            all_analysis_results = [["N/A"] * len(analysis_queries) for _ in papers_data]
+        
+        # Write paper data
+        for i, metadata in enumerate(papers_metadata):
+            analysis_results = all_analysis_results[i] if i < len(all_analysis_results) else ["N/A"] * len(analysis_queries)
+            
+            # Create row data
+            row_data = {
+                'name': metadata['title'],
+                'PMID': metadata['pmid'],
+                'corresponding_author': metadata['corresponding_author'],
+                'university': metadata['university'],
+                'department': metadata['department'],
+                'abstract': metadata['abstract']
             }
             
             # Add analysis results
-            for i, result in enumerate(analysis_results):
-                row_data[f'analysis_{i+1}'] = result
+            for j, result in enumerate(analysis_results):
+                row_data[f'analysis_{j+1}'] = result
             
             writer.writerow(row_data)
     
     print(f"✅ Successfully exported to {filename}")
     return filename
+
+def analyze_papers_batch_with_llm(papers_data, queries, batch_size=10):
+    """Analyze multiple papers in batches using LLM"""
+    if not os.getenv("OPENAI_API_KEY"):
+        return [["N/A"] * len(queries) for _ in papers_data]
+    
+    from llama_index.llms.openai import OpenAI
+    llm = OpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"))
+    
+    all_results = []
+    
+    # Process papers in batches
+    for i in range(0, len(papers_data), batch_size):
+        batch = papers_data[i:i+batch_size]
+        batch_results = []
+        
+        for query in queries:
+            # Create batch prompt for all papers in this batch
+            papers_text = ""
+            for j, (title, abstract) in enumerate(batch):
+                if abstract and abstract != 'N/A':
+                    papers_text += f"\nPaper {j+1}: {title}\nAbstract: {abstract}\n"
+                else:
+                    papers_text += f"\nPaper {j+1}: {title}\nAbstract: No abstract available\n"
+            
+            prompt = f"""
+            Analyze these research papers and answer the question for each paper with ONLY ONE WORD per paper.
+            
+            {papers_text}
+            
+            Question: {query}
+            
+            Instructions:
+            - Respond with exactly ONE word per paper
+            - Format: "1: word1, 2: word2, 3: word3" etc.
+            - Choose the most relevant single word that answers the question
+            - If unclear, respond with "Unknown"
+            
+            One word answers:"""
+            
+            try:
+                response = llm.complete(prompt)
+                result_text = response.text.strip()
+                
+                # Parse the batch response
+                query_results = []
+                for j in range(len(batch)):
+                    # Look for pattern "j+1: word"
+                    import re
+                    pattern = f"{j+1}:\\s*([^,\\n]+)"
+                    match = re.search(pattern, result_text)
+                    if match:
+                        word = match.group(1).strip().split()[0]  # Take first word only
+                        query_results.append(word)
+                    else:
+                        query_results.append("Unknown")
+                
+                batch_results.append(query_results)
+                
+            except Exception as e:
+                print(f"⚠️  Error analyzing batch: {e}")
+                batch_results.append(["Error"] * len(batch))
+        
+        # Transpose batch_results to get results per paper
+        for j in range(len(batch)):
+            paper_results = [batch_results[q][j] for q in range(len(queries))]
+            all_results.append(paper_results)
+        
+        print(f"🤖 Analyzed batch {i//batch_size + 1}/{(len(papers_data) + batch_size - 1)//batch_size}")
+    
+    return all_results
 
 def analyze_paper_with_llm(abstract, queries):
     """Analyze a single paper abstract using LLM with default queries"""
