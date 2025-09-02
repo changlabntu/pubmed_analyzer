@@ -230,11 +230,11 @@ def filter_papers_by_region_with_llm(documents, target_region, batch_size=5):
     return filtered_papers
 
 def export_papers_to_csv(documents, filename="usa_papers.csv"):
-    """Export papers to CSV file with university and department columns"""
+    """Export papers to CSV file with university, department, and abstract columns"""
     print(f"📄 Exporting {len(documents)} papers to {filename}...")
     
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['name', 'PMID', 'corresponding_author', 'university', 'department']
+        fieldnames = ['name', 'PMID', 'corresponding_author', 'university', 'department', 'abstract']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         # Write header
@@ -245,6 +245,7 @@ def export_papers_to_csv(documents, filename="usa_papers.csv"):
             # Extract data from document metadata
             title = doc.metadata.get('title', 'N/A') if doc.metadata else 'N/A'
             pmid = doc.metadata.get('pmid', 'N/A') if doc.metadata else 'N/A'
+            abstract = doc.metadata.get('abstract', 'N/A') if doc.metadata else 'N/A'
             
             corresponding_author = 'N/A'
             university = 'N/A'
@@ -261,11 +262,42 @@ def export_papers_to_csv(documents, filename="usa_papers.csv"):
                 'PMID': pmid,
                 'corresponding_author': corresponding_author,
                 'university': university,
-                'department': department
+                'department': department,
+                'abstract': abstract
             })
     
     print(f"✅ Successfully exported to {filename}")
     return filename
+
+def print_detailed_papers(documents, count=5):
+    """Print detailed information for first N papers"""
+    print(f"\n📋 Detailed Information for First {min(count, len(documents))} Papers:")
+    print("=" * 80)
+    
+    for i, doc in enumerate(documents[:count]):
+        print(f"\n📄 Paper {i+1}:")
+        print("-" * 40)
+        
+        # Extract metadata
+        title = doc.metadata.get('title', 'N/A') if doc.metadata else 'N/A'
+        pmid = doc.metadata.get('pmid', 'N/A') if doc.metadata else 'N/A'
+        abstract = doc.metadata.get('abstract', 'N/A') if doc.metadata else 'N/A'
+        first_author = doc.metadata.get('first_author', 'N/A') if doc.metadata else 'N/A'
+        
+        print(f"📝 Title: {title}")
+        print(f"🆔 PMID: {pmid}")
+        print(f"👤 First Author: {first_author}")
+        
+        if doc.metadata and 'corresponding_author' in doc.metadata:
+            if doc.metadata['corresponding_author']:
+                corr_author = doc.metadata['corresponding_author']
+                print(f"📧 Corresponding Author: {corr_author.get('name', 'N/A')}")
+                print(f"🏫 University: {corr_author.get('university', 'N/A')}")
+                if corr_author.get('department', 'N/A') != 'N/A':
+                    print(f"🏛️ Department: {corr_author.get('department', 'N/A')}")
+        
+        print(f"📄 Abstract: {abstract[:300]}{'...' if len(abstract) > 300 else ''}")
+        print()
 
 def search_pubmed(query, max_results=10):
     """Search PubMed and return paper details"""
@@ -362,6 +394,7 @@ def search_pubmed(query, max_results=10):
                     metadata={
                         "pmid": pmid, 
                         "title": title,
+                        "abstract": abstract,
                         "first_author": first_author,
                         "corresponding_author": corresponding_author
                     }
@@ -433,6 +466,7 @@ def main():
             print("🔍 Searching all journals...")
             documents = search_pubmed(base_query, max_results=search_config["max_results"])
         
+
         if not documents:
             print("No papers with abstracts found. Try a broader search.")
             return
@@ -445,6 +479,9 @@ def main():
             if not documents:
                 print(f"No {target_region}-affiliated papers found after filtering.")
                 return
+        
+        # Print detailed information for first 5 papers
+        print_detailed_papers(documents, count=5)
         
         # Export papers if configured
         if export_config["auto_export"]:
@@ -471,7 +508,7 @@ def main():
             print(f"   Answer: {response}")
             
     except Exception as e:
-        print("Make sure you have internet connection and valid API key.")
+        print("Error during calling openai api")
 
 if __name__ == "__main__":
     main()
