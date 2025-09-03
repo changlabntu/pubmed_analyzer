@@ -1,49 +1,70 @@
 {
   "search_config": {
-    "filter_journals": false,
-    "top_journals": [
-      "\"J Am Med Inform Assoc\"[Journal]",
-      "\"Nat Med\"[Journal]",
-      "\"Lancet Digit Health\"[Journal]",
-      "\"NPJ Digit Med\"[Journal]",
+    "filter_journals": true,
+    "top_journals":
+      [
       "\"JMIR Ment Health\"[Journal]",
-      "\"Artif Intell Med\"[Journal]",
-      "\"J Med Internet Res\"[Journal]",
       "\"Comput Human Behav\"[Journal]",
       "\"Cyberpsychol Behav Soc Netv\"[Journal]",
       "\"Front Digit Health\"[Journal]",
-      "\"IEEE J Biomed Health Inform\"[Journal]",
       "\"Psychol Med\"[Journal]",
-      "\"Nat Biotechnol\"[Journal]",
-      "\"Sci Transl Med\"[Journal]",
       "\"J Affect Disord\"[Journal]",
       "\"Clin Psychol Sci\"[Journal]",
-      "\"Int J Med Inform\"[Journal]",
       "\"Behav Res Ther\"[Journal]",
       "\"J Psychiatr Res\"[Journal]",
-      "\"Trends Cogn Sci\"[Journal]"
+      "\"Trends Cogn Sci\"[Journal]",
+      "\"Am J Psychiatry\"[Journal]",
+      "\"Arch Gen Psychiatry\"[Journal]",
+      "\"Biol Psychiatry\"[Journal]",
+      "\"J Autism Dev Disord\"[Journal]",
+      "\"Dev Med Child Neurol\"[Journal]",
+      "\"Autism Res\"[Journal]",
+      "\"J Intell Disabil Res\"[Journal]",
+      "\"Disabil Health J\"[Journal]",
+      "\"Crisis\"[Journal]",
+      "\"Suicide Life Threat Behav\"[Journal]",
+      "\"J Clin Psychiatry\"[Journal]",
+      "\"Depress Anxiety\"[Journal]",
+      "\"J Anxiety Disord\"[Journal]",
+      "\"Cogn Behav Ther\"[Journal]",
+      "\"Clin Child Fam Psychol Rev\"[Journal]",
+      "\"J Consult Clin Psychol\"[Journal]",
+      "\"Psychol Sci\"[Journal]",
+      "\"Curr Dir Psychol Sci\"[Journal]",
+      "\"J Pers Soc Psychol\"[Journal]",
+      "\"Dev Psychol\"[Journal]",
+      "\"Child Dev\"[Journal]",
+      "\"J Abnorm Psychol\"[Journal]",
+      "\"Clin Psychol Rev\"[Journal]",
+      "\"Annu Rev Psychol\"[Journal]",
+      "\"J Health Psychol\"[Journal]",
+      "\"Health Psychol\"[Journal]",
+      "\"Qual Life Res\"[Journal]",
+      "\"Appl Psychol Health Well Being\"[Journal]",
+      "\"J Happiness Stud\"[Journal]"
     ],
     "queries": [
       "psychology AND (machine learning OR deep learning)",
-      "(medical imaging OR MRI OR CT OR PET OR fMRI) AND (mental health OR depression OR anxiety OR psychosis OR schizophrenia) AND (machine learning OR deep learning OR llm OR AI)",
-      "(depression OR anxiety) AND (therapy OR treatment)",
-      "artificial intelligence AND mental health",
-      "deep learning AND neuroimaging"
+      "(medical imaging OR MRI OR CT OR PET OR fMRI) AND (mental health OR suicid* OR depres* OR anxie* OR psychos* OR schizoa*) AND (deep learning OR llm OR AI)",
+      "(medical imaging OR radiology OR MRI OR CT OR PET OR fMRI) AND (suicid*) AND (deep learning OR llm OR AI OR convolutional)",
+      "(mental health OR suicid* OR depres* OR anxie* OR psychos* OR schizoa*) AND (deep learning OR llm OR AI OR convolutional)",
+      "(imaging OR medical imaging OR radiology OR MRI OR CT OR PET OR fMRI) AND (deep learning OR llm OR AI OR convolutional)",
+      "(facial OR facial expression OR action unit) AND (mental health OR suicid* OR depres* OR anxie* OR psychos* OR schizoa*) AND (deep learning OR llm OR AI OR convolutional)",
     ],
-    "query_index": 1,
-    "target_regions": ["USA", "UK"],
+    "query_index": 3,
+    "target_regions": ["US", "USA", "Canada", "United States", "United States of America"],
     "max_results": 300
   },
   "export_config": {
-    "filename": "usa_papers.csv",
+    "filename": "filtered_papers.csv",
     "auto_export": true
   },
   "analysis_config": {
     "batch_query": 100,
     "default_queries": [
-      "answer in less than three words: what's the mental health topic?",
-      "answer in less than three words: what's the machine learning model?",
-      "answer in less than three words: what's the image modality?"
+      "answer in less than three words: what's the psychology / mental health topic?",
+      "answer in less than three words: what's the ML/DL model used?",
+      "answer in less than three words: what's the type of data?"
     ]
   }
 }

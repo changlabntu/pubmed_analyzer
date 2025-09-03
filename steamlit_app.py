@@ -25,13 +25,13 @@ def main():
     st.markdown("Analyze research papers with AI-powered insights")
     
     # Navigation
-    tab1, tab2 = st.tabs(["🔍 Search PubMed", "📊 Analyze CSV Data"])
+    tab2, tab1 = st.tabs(["🔍 Search PubMed", "📊 Analyze CSV Data"])
     
-    with tab1:
+    with tab2:
         st.markdown("### Search & Export Papers")
         # Your search interface here
         
-    with tab2:
+    with tab1:
         st.markdown("### CSV Data Analysis")
         
         # File selection

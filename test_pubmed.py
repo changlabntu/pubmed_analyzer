@@ -1,6 +1,6 @@
 """
 PubMed API + LlamaIndex Demo
-Shortest demo showing how to:
+Streamlined version maintaining original LLM processing:
 1. Search PubMed for papers
 2. Create LlamaIndex documents from abstracts
 3. Query with OpenAI
@@ -16,6 +16,7 @@ from Bio import Entrez
 from llama_index.core import VectorStoreIndex, Document, Settings
 from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
+from tqdm import tqdm
 
 # Load environment variables
 load_dotenv()
@@ -69,14 +70,10 @@ def get_default_config():
     }
 
 def extract_university_and_department(affiliation_text):
-    """
-    Extract university and department names separately from PubMed affiliation text
-    Returns: (university, department) tuple
-    """
-    # Clean up the original text
+    """Extract university and department from affiliation text"""
     affiliation = affiliation_text.strip()
     
-    # Remove common suffixes first
+    # Clean common suffixes
     cleanup_patterns = [
         r',?\s*\b\d{5}[-\s]?\d{0,4}\b.*$',  # US zip codes
         r',?\s*\b[A-Z]{2}\s*\d{5}.*$',      # State + zip
@@ -88,51 +85,44 @@ def extract_university_and_department(affiliation_text):
     for pattern in cleanup_patterns:
         affiliation = re.sub(pattern, '', affiliation, flags=re.IGNORECASE)
     
-    # Split by common separators
     parts = [part.strip() for part in re.split(r'[,;]', affiliation) if part.strip()]
     
     university = "N/A"
     department = "N/A"
     
-    # Look for university/college/hospital in parts
-    university_patterns = [
+    # University patterns
+    uni_patterns = [
         r'.*(?:University|College|Medical Center|Hospital|Institute of Technology|Health System).*',
         r'.*(?:Universit[yé]|Institut).*'
     ]
     
-    # Look for department/school patterns
-    department_patterns = [
+    # Department patterns  
+    dept_patterns = [
         r'.*(?:Department|School|Division|Center|Laboratory|Lab).*',
         r'.*(?:Faculty|College) of.*'
     ]
     
     for part in parts:
-        # Check if this part is a university
-        for pattern in university_patterns:
-            if re.match(pattern, part, re.IGNORECASE) and university == "N/A":
-                university = part
-                break
+        if university == "N/A":
+            for pattern in uni_patterns:
+                if re.match(pattern, part, re.IGNORECASE):
+                    university = part
+                    break
         
-        # Check if this part is a department
-        for pattern in department_patterns:
-            if re.match(pattern, part, re.IGNORECASE) and department == "N/A":
-                department = part
-                break
+        if department == "N/A":
+            for pattern in dept_patterns:
+                if re.match(pattern, part, re.IGNORECASE):
+                    department = part
+                    break
     
-    # If we found both, we're done
-    if university != "N/A" and department != "N/A":
-        return university, department
-    
-    # If we only found university, try to extract department from the same part
+    # Extract department from university string if needed
     if university != "N/A" and department == "N/A":
-        # Look for department within the university string
-        dept_in_univ = re.search(r'(Department|School|Division|Center|Laboratory|Lab|Faculty|College)\s+of\s+[^,;]+', university, re.IGNORECASE)
-        if dept_in_univ:
-            department = dept_in_univ.group(0)
-            # Remove department from university name
-            university = re.sub(re.escape(dept_in_univ.group(0)), '', university).strip(' ,-')
+        dept_match = re.search(r'(Department|School|Division|Center|Laboratory|Lab|Faculty|College)\s+of\s+[^,;]+', university, re.IGNORECASE)
+        if dept_match:
+            department = dept_match.group(0)
+            university = re.sub(re.escape(dept_match.group(0)), '', university).strip(' ,-')
     
-    # Fallback: if no clear university found, use the longest meaningful part
+    # Fallback for university
     if university == "N/A" and parts:
         university = max(parts, key=len)
     
@@ -156,7 +146,7 @@ def filter_papers_by_regions_with_llm(documents, target_regions, batch_size=5):
     
     filtered_papers = []
     
-    # Extract institutions for batch processing
+    # Extract institutions for batch processing - handle multiple docs per institution
     institutions_to_check = []
     doc_institution_map = {}
     
@@ -167,15 +157,18 @@ def filter_papers_by_regions_with_llm(documents, target_regions, batch_size=5):
                 institution = doc.metadata['corresponding_author']['university']
         
         if institution:
-            institutions_to_check.append(institution)
-            doc_institution_map[institution] = doc
+            # Create unique key using institution + PMID to avoid overwrites
+            pmid = doc.metadata.get('pmid', 'N/A')
+            unique_key = f"{institution}___{pmid}"
+            institutions_to_check.append((unique_key, institution))
+            doc_institution_map[unique_key] = doc
     
     # Process institutions in batches
     for i in range(0, len(institutions_to_check), batch_size):
         batch = institutions_to_check[i:i+batch_size]
         
-        # Create batch prompt
-        institution_list = "\n".join([f"{j+1}. {inst}" for j, inst in enumerate(batch)])
+        # Create batch prompt using just institution names
+        institution_list = "\n".join([f"{j+1}. {inst_name}" for j, (unique_key, inst_name) in enumerate(batch)])
         
         prompt = f"""
         Analyze these institution names and determine which ones are located in any of these regions: {regions_str}.
@@ -210,103 +203,22 @@ def filter_papers_by_regions_with_llm(documents, target_regions, batch_size=5):
                     except ValueError:
                         continue
             
-            # Process results
-            for j, institution in enumerate(batch):
+            # Process results using unique keys
+            for j, (unique_key, inst_name) in enumerate(batch):
                 if j in keep_indices:
-                    filtered_papers.append(doc_institution_map[institution])
-                    print(f"✅ Keeping: {institution}")
+                    filtered_papers.append(doc_institution_map[unique_key])
+                    print(f"✅ Keeping: {inst_name}")
                 else:
-                    print(f"❌ Filtering out: {institution}")
+                    print(f"❌ Filtering out: {inst_name}")
                     
         except Exception as e:
             print(f"⚠️  Error processing batch {i//batch_size + 1}: {e}")
             # Keep all papers in batch if LLM fails
-            for institution in batch:
-                filtered_papers.append(doc_institution_map[institution])
+            for unique_key, inst_name in batch:
+                filtered_papers.append(doc_institution_map[unique_key])
     
     print(f"🌍 Filtered to {len(filtered_papers)} papers from target regions ({len(documents)} total)")
     return filtered_papers
-
-def export_papers_to_csv(documents, filename="usa_papers.csv", analysis_config=None):
-    """Export papers to CSV file with university, department, abstract, and AI analysis columns"""
-    print(f"📄 Exporting {len(documents)} papers to {filename}...")
-    
-    # Get analysis queries
-    analysis_queries = []
-    if analysis_config and "default_queries" in analysis_config:
-        analysis_queries = analysis_config["default_queries"]
-    
-    # Create fieldnames dynamically based on analysis queries
-    fieldnames = ['name', 'PMID', 'corresponding_author', 'university', 'department', 'abstract']
-    for i, query in enumerate(analysis_queries):
-        fieldnames.append(f'analysis_{i+1}')
-    
-    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
-        # Write header
-        writer.writeheader()
-        
-        # Prepare data for batch analysis
-        papers_data = []
-        papers_metadata = []
-        
-        for doc in documents:
-            # Extract data from document metadata
-            title = doc.metadata.get('title', 'N/A') if doc.metadata else 'N/A'
-            pmid = doc.metadata.get('pmid', 'N/A') if doc.metadata else 'N/A'
-            abstract = doc.metadata.get('abstract', 'N/A') if doc.metadata else 'N/A'
-            
-            corresponding_author = 'N/A'
-            university = 'N/A'
-            department = 'N/A'
-            
-            if doc.metadata and 'corresponding_author' in doc.metadata:
-                if doc.metadata['corresponding_author']:
-                    corresponding_author = doc.metadata['corresponding_author'].get('name', 'N/A')
-                    university = doc.metadata['corresponding_author'].get('university', 'N/A')
-                    department = doc.metadata['corresponding_author'].get('department', 'N/A')
-            
-            papers_data.append((title, abstract))
-            papers_metadata.append({
-                'title': title,
-                'pmid': pmid,
-                'corresponding_author': corresponding_author,
-                'university': university,
-                'department': department,
-                'abstract': abstract
-            })
-        
-        # Get AI analysis results in batches
-        all_analysis_results = []
-        if analysis_queries:
-            print(f"🤖 Analyzing {len(papers_data)} papers in batches of 10...")
-            all_analysis_results = analyze_papers_batch_with_llm(papers_data, analysis_queries, batch_size=10)
-        else:
-            all_analysis_results = [["N/A"] * len(analysis_queries) for _ in papers_data]
-        
-        # Write paper data
-        for i, metadata in enumerate(papers_metadata):
-            analysis_results = all_analysis_results[i] if i < len(all_analysis_results) else ["N/A"] * len(analysis_queries)
-            
-            # Create row data
-            row_data = {
-                'name': metadata['title'],
-                'PMID': metadata['pmid'],
-                'corresponding_author': metadata['corresponding_author'],
-                'university': metadata['university'],
-                'department': metadata['department'],
-                'abstract': metadata['abstract']
-            }
-            
-            # Add analysis results
-            for j, result in enumerate(analysis_results):
-                row_data[f'analysis_{j+1}'] = result
-            
-            writer.writerow(row_data)
-    
-    print(f"✅ Successfully exported to {filename}")
-    return filename
 
 def analyze_papers_batch_with_llm(papers_data, queries, batch_size=10):
     """Analyze multiple papers in batches using LLM"""
@@ -319,7 +231,7 @@ def analyze_papers_batch_with_llm(papers_data, queries, batch_size=10):
     all_results = []
     
     # Process papers in batches
-    for i in range(0, len(papers_data), batch_size):
+    for i in tqdm(range(0, len(papers_data), batch_size)):
         batch = papers_data[i:i+batch_size]
         batch_results = []
         
@@ -333,24 +245,24 @@ def analyze_papers_batch_with_llm(papers_data, queries, batch_size=10):
                     papers_text += f"\nPaper {j+1}: {title}\nAbstract: No abstract available\n"
             
             prompt = f"""
-            Analyze these research papers and answer the question for each paper with ONLY ONE WORD per paper.
+            Analyze these research papers and answer the question for each paper with ONLY THREE WORDS per paper.
             
             {papers_text}
             
             Question: {query}
             
             Instructions:
-            - Respond with exactly ONE word per paper
-            - Format: "1: word1, 2: word2, 3: word3" etc.
-            - Choose the most relevant single word that answers the question
-            - If unclear, respond with "Unknown"
+            - Respond with exactly THREE words per paper
+            - Format: "1: word1 word2 word3, 2: word4 word5 word6, 3: word7 word8 word9" etc.
+            - Choose the most relevant three words that answer the question
+            - If unclear, respond with "not sure"
             
-            One word answers:"""
-            
+            Three word answers:"""
+        
             try:
                 response = llm.complete(prompt)
                 result_text = response.text.strip()
-                
+
                 # Parse the batch response
                 query_results = []
                 for j in range(len(batch)):
@@ -359,7 +271,7 @@ def analyze_papers_batch_with_llm(papers_data, queries, batch_size=10):
                     pattern = f"{j+1}:\\s*([^,\\n]+)"
                     match = re.search(pattern, result_text)
                     if match:
-                        word = match.group(1).strip().split()[0]  # Take first word only
+                        word = " ".join(match.group(1).strip().split()[:3])  # Take first 3 words
                         query_results.append(word)
                     else:
                         query_results.append("Unknown")
@@ -374,8 +286,6 @@ def analyze_papers_batch_with_llm(papers_data, queries, batch_size=10):
         for j in range(len(batch)):
             paper_results = [batch_results[q][j] for q in range(len(queries))]
             all_results.append(paper_results)
-        
-        print(f"🤖 Analyzed batch {i//batch_size + 1}/{(len(papers_data) + batch_size - 1)//batch_size}")
     
     return all_results
 
@@ -414,12 +324,85 @@ def analyze_paper_with_llm(abstract, queries):
     
     return results
 
+def export_papers_to_csv(documents, filename="usa_papers.csv", analysis_config=None):
+    """Export papers to CSV file with AI analysis"""
+    print(f"📄 Exporting {len(documents)} papers to {filename}...")
+    
+    analysis_queries = []
+    if analysis_config and "default_queries" in analysis_config:
+        analysis_queries = analysis_config["default_queries"]
+    
+    fieldnames = ['name', 'PMID', 'corresponding_author', 'university', 'department', 'abstract']
+    for i in range(len(analysis_queries)):
+        fieldnames.append(f'analysis_{i+1}')
+    
+    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        # Prepare data for batch analysis
+        papers_data = []
+        papers_metadata = []
+        
+        for doc in documents:
+            title = doc.metadata.get('title', 'N/A') if doc.metadata else 'N/A'
+            pmid = doc.metadata.get('pmid', 'N/A') if doc.metadata else 'N/A'
+            abstract = doc.metadata.get('abstract', 'N/A') if doc.metadata else 'N/A'
+            
+            corresponding_author = 'N/A'
+            university = 'N/A'
+            department = 'N/A'
+            
+            if doc.metadata and 'corresponding_author' in doc.metadata:
+                if doc.metadata['corresponding_author']:
+                    corresponding_author = doc.metadata['corresponding_author'].get('name', 'N/A')
+                    university = doc.metadata['corresponding_author'].get('university', 'N/A')
+                    department = doc.metadata['corresponding_author'].get('department', 'N/A')
+            
+            papers_data.append((title, abstract))
+            papers_metadata.append({
+                'title': title,
+                'pmid': pmid,
+                'corresponding_author': corresponding_author,
+                'university': university,
+                'department': department,
+                'abstract': abstract
+            })
+        
+        # Get AI analysis results in batches
+        all_analysis_results = []
+        if analysis_queries:
+            print(f"🤖 Analyzing {len(papers_data)} papers in batches...")
+            all_analysis_results = analyze_papers_batch_with_llm(papers_data, analysis_queries, batch_size=10)
+        else:
+            all_analysis_results = [["N/A"] * len(analysis_queries) for _ in papers_data]
+        
+        # Write paper data
+        for i, metadata in enumerate(papers_metadata):
+            analysis_results = all_analysis_results[i] if i < len(all_analysis_results) else ["N/A"] * len(analysis_queries)
+            
+            row_data = {
+                'name': metadata['title'],
+                'PMID': metadata['pmid'],
+                'corresponding_author': metadata['corresponding_author'],
+                'university': metadata['university'],
+                'department': metadata['department'],
+                'abstract': metadata['abstract']
+            }
+            
+            for j, result in enumerate(analysis_results):
+                row_data[f'analysis_{j+1}'] = result
+            
+            writer.writerow(row_data)
+    
+    print(f"✅ Successfully exported to {filename}")
+    return filename
+
 def print_detailed_papers(documents, count=5, analysis_config=None):
-    """Print detailed information for first N papers with AI analysis"""
+    """Print detailed information for first N papers"""
     print(f"\n📋 Detailed Information for First {min(count, len(documents))} Papers:")
     print("=" * 80)
     
-    # Get analysis queries if provided
     analysis_queries = []
     if analysis_config and "default_queries" in analysis_config:
         analysis_queries = analysis_config["default_queries"]
@@ -428,7 +411,6 @@ def print_detailed_papers(documents, count=5, analysis_config=None):
         print(f"\n📄 Paper {i+1}:")
         print("-" * 40)
         
-        # Extract metadata
         title = doc.metadata.get('title', 'N/A') if doc.metadata else 'N/A'
         pmid = doc.metadata.get('pmid', 'N/A') if doc.metadata else 'N/A'
         abstract = doc.metadata.get('abstract', 'N/A') if doc.metadata else 'N/A'
@@ -436,7 +418,7 @@ def print_detailed_papers(documents, count=5, analysis_config=None):
         
         print(f"📝 Title: {title}")
         
-        # AI Analysis results as second row
+        # AI Analysis results
         if analysis_queries and abstract != 'N/A':
             print("🤖 AI Analysis:", end=" ")
             analysis_results = analyze_paper_with_llm(abstract, analysis_queries)
@@ -446,8 +428,8 @@ def print_detailed_papers(documents, count=5, analysis_config=None):
         print(f"👤 First Author: {first_author}")
         
         if doc.metadata and 'corresponding_author' in doc.metadata:
-            if doc.metadata['corresponding_author']:
-                corr_author = doc.metadata['corresponding_author']
+            corr_author = doc.metadata['corresponding_author']
+            if corr_author:
                 print(f"📧 Corresponding Author: {corr_author.get('name', 'N/A')}")
                 print(f"🏫 University: {corr_author.get('university', 'N/A')}")
                 if corr_author.get('department', 'N/A') != 'N/A':
@@ -465,33 +447,35 @@ def search_pubmed(query, max_results=10):
     search_results = Entrez.read(handle)
     handle.close()
     
-    # Get paper details
     ids = search_results["IdList"]
     if not ids:
         print("No papers found!")
         return []
     
-    # Fetch detailed XML format to get more author info
+    # Fetch detailed XML format
     handle = Entrez.efetch(db="pubmed", id=ids, rettype="xml", retmode="xml")
     papers_xml = Entrez.read(handle)
     handle.close()
     
-    # Parse papers from XML
     documents = []
+    seen_pmids = set()
     
     print(f"\n📋 Found Papers:")
     print("-" * 70)
     
     for i, article in enumerate(papers_xml['PubmedArticle'][:max_results]):
         try:
-            # Extract basic info
             medline_citation = article['MedlineCitation']
             pmid = str(medline_citation['PMID'])
             
-            # Title
+            if pmid in seen_pmids:
+                print(f"   🔄 Skipping duplicate PMID: {pmid}")
+                continue
+            seen_pmids.add(pmid)
+            
             title = medline_citation['Article']['ArticleTitle']
             
-            # Abstract
+            # Extract abstract
             abstract = ""
             if 'Abstract' in medline_citation['Article']:
                 abstract_texts = medline_citation['Article']['Abstract']['AbstractText']
@@ -500,7 +484,7 @@ def search_pubmed(query, max_results=10):
                 else:
                     abstract = str(abstract_texts)
             
-            # Authors and corresponding author info
+            # Extract authors
             corresponding_author = None
             first_author = None
             
@@ -511,10 +495,9 @@ def search_pubmed(query, max_results=10):
                     if 'LastName' in author and 'ForeName' in author:
                         author_name = f"{author['ForeName']} {author['LastName']}"
                         
-                        if j == 0:  # First author
+                        if j == 0:
                             first_author = author_name
                         
-                        # Check for corresponding author indicators
                         if 'AffiliationInfo' in author:
                             for affiliation in author['AffiliationInfo']:
                                 if 'Affiliation' in affiliation:
@@ -549,7 +532,7 @@ def search_pubmed(query, max_results=10):
                 documents.append(Document(
                     text=doc_text,
                     metadata={
-                        "pmid": pmid, 
+                        "pmid": pmid,
                         "title": title,
                         "abstract": abstract,
                         "first_author": first_author,
@@ -565,23 +548,33 @@ def search_pubmed(query, max_results=10):
             print(f"   ❌ Error parsing paper {i+1}: {e}")
             continue
     
-    print(f"✅ {len(documents)} papers with abstracts ready for analysis")
-    return documents
+    print(f"🔍 Found {len(documents)} papers with abstracts")
+    
+    # Final deduplication check
+    unique_documents = []
+    final_seen_pmids = set()
+    
+    for doc in documents:
+        pmid = doc.metadata.get('pmid', 'N/A') if doc.metadata else 'N/A'
+        if pmid not in final_seen_pmids and pmid != 'N/A':
+            final_seen_pmids.add(pmid)
+            unique_documents.append(doc)
+        elif pmid != 'N/A':
+            print(f"   🔄 Removing final duplicate PMID: {pmid}")
+    
+    print(f"✅ Final count: {len(unique_documents)} unique papers")
+    return unique_documents
 
 def search_with_journal_filter(base_query, top_journals, max_results=500):
     """Search PubMed with journal filtering"""
-    # Combine journals with OR
     journal_filter = " OR ".join(top_journals)
-    
-    # Final query
     full_query = f'({base_query}) AND ({journal_filter})'
-    
     return search_pubmed(full_query, max_results=max_results)
 
 def main():
     """Main demo function with JSON configuration support"""
     parser = argparse.ArgumentParser(description="PubMed + LlamaIndex Demo")
-    parser.add_argument("--analyze", action="store_true", 
+    parser.add_argument("--analyze", action="store_true",
                        help="Enable AI analysis of papers (requires OpenAI API key)")
     parser.add_argument("--config", default="config.json",
                        help="Path to JSON configuration file (default: config.json)")
@@ -615,15 +608,14 @@ def main():
         if search_config["filter_journals"]:
             print("🎯 Searching in configured top journals...")
             documents = search_with_journal_filter(
-                base_query, 
-                search_config["top_journals"], 
+                base_query,
+                search_config["top_journals"],
                 max_results=search_config["max_results"]
             )
         else:
             print("🔍 Searching all journals...")
             documents = search_pubmed(base_query, max_results=search_config["max_results"])
         
-
         if not documents:
             print("No papers with abstracts found. Try a broader search.")
             return
@@ -638,7 +630,7 @@ def main():
                 return
         
         # Print detailed information for first 5 papers
-        print_detailed_papers(documents, count=5, analysis_config=analysis_config)
+        #print_detailed_papers(documents, count=5, analysis_config=analysis_config)
         
         # Export papers if configured
         if export_config["auto_export"]:
@@ -660,13 +652,12 @@ def main():
         print("-" * 35)
         
         for i, question in enumerate(analysis_queries, 1):
-            print('hi')
             print(f"\n{i}. {question}")
             response = query_engine.query(question)
             print(f"   Answer: {response}")
             
     except Exception as e:
-        print("Error during calling openai api")
+        print(f"❌ Error: {e}")
 
 if __name__ == "__main__":
     main()
