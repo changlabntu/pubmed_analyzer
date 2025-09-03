@@ -12,4 +12,4 @@ pubmed_research_tool/
 │   └── data_processing.py    # Data manipulation helpers
 ├── config.json              # Default configuration
 ├── requirements.txt         # Dependencies
-└── README.md               # Documentatio
+└── README.md               # Documentation

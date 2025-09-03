@@ -1,6 +1,6 @@
 {
   "search_config": {
-    "filter_journals": true,
+    "filter_journals": false,
     "top_journals":
       [
       "\"JMIR Ment Health\"[Journal]",
@@ -49,9 +49,9 @@
       "(medical imaging OR radiology OR MRI OR CT OR PET OR fMRI) AND (suicid*) AND (deep learning OR llm OR AI OR convolutional)",
       "(mental health OR suicid* OR depres* OR anxie* OR psychos* OR schizoa*) AND (deep learning OR llm OR AI OR convolutional)",
       "(imaging OR medical imaging OR radiology OR MRI OR CT OR PET OR fMRI) AND (deep learning OR llm OR AI OR convolutional)",
-      "(facial OR facial expression OR action unit) AND (mental health OR suicid* OR depres* OR anxie* OR psychos* OR schizoa*) AND (deep learning OR llm OR AI OR convolutional)",
+      "(facial OR facial expression OR action unit) AND (mental health OR suicid* OR depres* OR anxie* OR psychos* OR schizoa*) AND (deep learning OR llm OR AI OR convolutional)"
     ],
-    "query_index": 3,
+    "query_index": 1,
     "target_regions": ["US", "USA", "Canada", "United States", "United States of America"],
     "max_results": 300
   },
